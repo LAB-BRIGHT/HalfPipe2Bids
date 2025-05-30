@@ -2,7 +2,7 @@
 
 HalfPipe2Bids is a tool designed to convert neuroimaging data from the **HalfPipe** format to the standardized **BIDS** (Brain Imaging Data Structure) format.
 It supports containerized environments via **Docker** and **Singularity**.
-
+<!-- 
 ## Table of Contents <!-- omit in toc -->
 - [Features](#features)
 - [Requirements](#requirements)
@@ -22,7 +22,7 @@ It supports containerized environments via **Docker** and **Singularity**.
 ## Requirements
 Before running HalfPipe2BIDS, ensure the following dependencies are installed:
 - [Docker](https://docs.docker.com/get-docker/) or [Singularity](https://sylabs.io/guides/3.8/user-guide/installation.html)
-- [Make](https://www.gnu.org/software/make/)
+- [Make](https://www.gnu.org/software/make/) -->
 
 ## Running HalfPipe2BIDS
 
@@ -37,10 +37,10 @@ Running the CLI:
 ```
 halfpipe2bids halfpipe2bids/tests/data/dataset-ds000030_halfpipe1.2.3dev outputs group
 ```
-
+<!-- 
 ### Using Docker
 ### Using Singularity
 
 ## Contributing
 
-## License
+## License -->
