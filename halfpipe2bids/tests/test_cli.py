@@ -3,7 +3,7 @@ Simple code to smoke test the functionality.
 """
 
 from pathlib import Path
-from pkg_resources import resource_filename
+from importlib import resources
 import json
 import pytest
 
@@ -33,10 +33,7 @@ def test_help(capsys):
 
 @pytest.mark.smoke
 def test_smoke(tmp_path, caplog):
-    halfpipe_dir = resource_filename(
-        "halfpipe2bids",
-        "tests/data/dataset-ds000030_halfpipe1.2.3dev",
-    )
+    halfpipe_dir = resources.files("halfpipe2bids") / "tests/data/dataset-ds000030_halfpipe1.2.3dev"
     output_dir = tmp_path / "output"
 
     main(
