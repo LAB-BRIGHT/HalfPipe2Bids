@@ -22,8 +22,9 @@ This is an unstable version for internal testing.
 
 ### New
 
-- First prototype of `halfpipe2bids` (@pbergeret12)
-- Create CI workflow (@htwangtw)
+- First prototype of `halfpipe2bids`. (@pbergeret12)
+- Create CI workflow. (@htwangtw)
+- Convert prototype to a single entry point command-line tool. (@htwangtw)
 
 ### Fixes
 
