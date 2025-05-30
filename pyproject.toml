@@ -57,6 +57,9 @@ fallback-version = "0.0.0+ci"
 [tool.hatch.build.targets.sdist]
 exclude = [".git_archival.txt"]
 
+[tool.setuptools_scm]
+fallback-version = "0.0.0+ci"
+
 [tool.pytest.ini_options]
 minversion = "7"
 log_cli_level = "INFO"
