@@ -3,7 +3,7 @@
 HalfPipe2Bids is a tool designed to convert neuroimaging data from the **HalfPipe** format to the standardized **BIDS** (Brain Imaging Data Structure) format.
 
 <!-- 
-## Table of Contents <!-- omit in toc -->
+## Table of Contents
 - [Features](#features)
 - [Requirements](#requirements)
 - [Running HalfPipe2BIDS](#running-halfpipe2bids)
