@@ -14,6 +14,18 @@
 ### Changes
 -->
 
+## 0.0.1-alpha.1.dev
+
+**Released MONTH YEAR**
+
+### New
+
+### Fixes
+
+### Enhancements
+
+### Changes
+
 ## 0.0.1-alpha
 
 May 30 2025
