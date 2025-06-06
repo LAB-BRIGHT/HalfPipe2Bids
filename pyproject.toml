@@ -26,7 +26,6 @@ dev = [
   "pre-commit",
   "halfpipe2bids[test]",
   'tox',
-  'mypy',
   'types-setuptools',
   'pandas-stubs',
   'types-tqdm'

@@ -6,18 +6,22 @@ from nilearn.signal import clean
 from nilearn import plotting
 
 hp2b_log = logging.getLogger("halfpipe2bids")
+hp2b_url = "https://github.com/pbergeret12/HalfPipe2Bids/"
 
 
 def get_subjects(path_halfpipe_timeseries):
     # TODO: documentation
-    return [sub for sub in os.listdir(path_halfpipe_timeseries)
-            if os.path.isdir(os.path.join(path_halfpipe_timeseries, sub))]
+    return [
+        sub
+        for sub in os.listdir(path_halfpipe_timeseries)
+        if os.path.isdir(os.path.join(path_halfpipe_timeseries, sub))
+    ]
 
 
 def load_label_schaefer(path_label_schaefer):
-    # TODO: documentation and eventually remove - we what this to work with 
+    # TODO: documentation and eventually remove - we what this to work with
     # different atlases
-    return list(pd.read_csv(path_label_schaefer, sep='\t', header=None)[1])
+    return list(pd.read_csv(path_label_schaefer, sep="\t", header=None)[1])
 
 
 def get_strategy_confounds(spec_path):
@@ -34,7 +38,9 @@ def get_strategy_confounds(spec_path):
     for feature in data.get("features", []):
         strategy_name = feature.get("name")
         setting_name = feature.get("setting")
-        strategy_confounds[strategy_name] = setting_to_confounds.get(setting_name, [])
+        strategy_confounds[strategy_name] = setting_to_confounds.get(
+            setting_name, []
+        )
 
     return strategy_confounds
 
@@ -47,7 +53,9 @@ def impute_and_clean(df):
     if df_filled.isna().any().any():
         hp2b_log.warning("Certaines valeurs n'ont pas pu être imputées.")
 
-    cleaned = clean(df_filled.values, detrend=True, standardize='zscore_sample')
+    cleaned = clean(
+        df_filled.values, detrend=True, standardize="zscore_sample"
+    )
     return pd.DataFrame(cleaned, columns=df.columns, index=df.index)
 
 
@@ -61,15 +69,23 @@ def remove_bad_rois(dict_timeseries, label_schaefer, threshold=0.5):
             if label in df.columns and df[label].isna().all():
                 nan_counts[label] += 1
 
-    df_nan_prop = pd.DataFrame({
-        "ROI": list(nan_counts.keys()),
-        "proportion_nan": [nan_counts[label] / total_subjects for label in label_schaefer]
-    })
+    df_nan_prop = pd.DataFrame(
+        {
+            "ROI": list(nan_counts.keys()),
+            "proportion_nan": [
+                nan_counts[label] / total_subjects for label in label_schaefer
+            ],
+        }
+    )
 
-    labels_to_drop = df_nan_prop[df_nan_prop["proportion_nan"] > threshold]["ROI"].tolist()
+    labels_to_drop = df_nan_prop[df_nan_prop["proportion_nan"] > threshold][
+        "ROI"
+    ].tolist()
 
     for key in dict_timeseries:
-        dict_timeseries[key] = dict_timeseries[key].drop(columns=labels_to_drop, errors='ignore')
+        dict_timeseries[key] = dict_timeseries[key].drop(
+            columns=labels_to_drop, errors="ignore"
+        )
 
     return labels_to_drop
 
@@ -77,7 +93,9 @@ def remove_bad_rois(dict_timeseries, label_schaefer, threshold=0.5):
 def get_coords(volume_path, label_schaefer, labels_to_drop):
     # TODO: documentation
     coords = plotting.find_parcellation_cut_coords(volume_path)
-    df_coords = pd.DataFrame(coords, index=label_schaefer, columns=['x', 'y', 'z'])
+    df_coords = pd.DataFrame(
+        coords, index=label_schaefer, columns=["x", "y", "z"]
+    )
     return df_coords[~df_coords.index.isin(labels_to_drop)]
 
 
@@ -85,21 +103,26 @@ def crearte_dataset_metadata_json(output_dir) -> None:
     """
     Create dataset-level metadata JSON files for BIDS.
     Args:
-        output_dir (Path): Le répertoire de sortie où le fichier JSON sera créé.
+        output_dir (Path): path to the output directory where the JSON file
+        will be saved.
     """
-    # Export du fichier JSON commun de matrice
-    summary_path = output_dir / 'meas-PearsonCorrelation_relmat.json'
-    with open(summary_path, 'w') as f:
-        json.dump({
-            "Measure": "Pearson correlation",
-            "MeasureDescription": "Pearson correlation",
-            "Weighted": False,
-            "Directed": False,
-            "ValidDiagonal": True,
-            "StorageFormat": "Full",
-            "NonNegative": "",
-            "Code": "https://github.com/pbergeret12/HalfPipe2Bids/tree/main"
-        }, f, indent=4)
+    # export json file of common metadata for BIDS dataset
+    summary_path = output_dir / "meas-PearsonCorrelation_relmat.json"
+    with open(summary_path, "w") as f:
+        json.dump(
+            {
+                "Measure": "Pearson correlation",
+                "MeasureDescription": "Pearson correlation",
+                "Weighted": False,
+                "Directed": False,
+                "ValidDiagonal": True,
+                "StorageFormat": "Full",
+                "NonNegative": "",
+                "Code": hp2b_url,
+            },
+            f,
+            indent=4,
+        )
 
     hp2b_log.info(f"Export terminé dans : {output_dir}")
 
@@ -116,17 +139,17 @@ def crearte_dataset_metadata_json(output_dir) -> None:
             {
                 "Name": "Halfpipe2Bids",
                 "Version": "0.1",
-                "CodeURL": "https://github.com/pbergeret12/HalfPipe2Bids/tree/main"
+                "CodeURL": hp2b_url,
             }
         ],
-        "HowToAcknowledge": "Please refer to our repository: https://github.com/pbergeret12/HalfPipe2Bids/tree/main."
+        "HowToAcknowledge": f"Please refer to our repository: {hp2b_url}",
     }
 
-    output_filename = 'dataset_description.json'
+    output_filename = "dataset_description.json"
     output_file = output_dir / output_filename
 
     # Exporter le JSON
-    with open(output_file, 'w') as f:
+    with open(output_file, "w") as f:
         json.dump(json_dataset_description, f, indent=4)
 
     hp2b_log.info(f"JSON exporté vers {output_dir}")

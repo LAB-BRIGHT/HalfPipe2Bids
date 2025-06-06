@@ -28,12 +28,17 @@ def test_help(capsys):
     except SystemExit:
         pass
     captured = capsys.readouterr()
-    assert "Convert neuroimaging data from the HalfPipe format to" in captured.out
+    assert (
+        "Convert neuroimaging data from the HalfPipe format to" in captured.out
+    )
 
 
 @pytest.mark.smoke
 def test_smoke(tmp_path, caplog):
-    halfpipe_dir = resources.files("halfpipe2bids") / "tests/data/dataset-ds000030_halfpipe1.2.3dev"
+    halfpipe_dir = (
+        resources.files("halfpipe2bids")
+        / "tests/data/dataset-ds000030_halfpipe1.2.3dev"
+    )
     output_dir = tmp_path / "output"
 
     main(
@@ -44,4 +49,3 @@ def test_smoke(tmp_path, caplog):
         ]
     )
     # TODO: check outputs
-

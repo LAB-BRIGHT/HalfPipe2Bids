@@ -5,8 +5,10 @@ repos:
     rev: v5.0.0
     hooks:
     -   id: trailing-whitespace
+        exclude: ^halfpipe2bids/tests/data/
     -   id: end-of-file-fixer
         exclude_types: [svg]
+        exclude: ^halfpipe2bids/tests/data/
     -   id: check-yaml
     -   id: check-added-large-files
         args: ['--maxkb=1000']
