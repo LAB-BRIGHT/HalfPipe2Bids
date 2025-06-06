@@ -57,6 +57,12 @@ fallback-version = "0.0.0+ci"
 [tool.hatch.build.targets.sdist]
 exclude = [".git_archival.txt"]
 
+[tool.black]
+target-version = ['py38']
+exclude = "giga_connectome/_version.py"
+line-length = 79
+
+
 [tool.setuptools_scm]
 fallback-version = "0.0.0+ci"
 
