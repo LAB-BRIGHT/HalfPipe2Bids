@@ -10,7 +10,7 @@ on:
     branches:
     - main
     - maint/*
-    paths: ['halfpipe2bids/*', 'pyproject.toml', 'requirements.txt']
+    paths: ['halfpipe2bids/*', 'pyproject.toml']
 
 defaults:
   run:
@@ -126,11 +126,11 @@ jobs:
     - name: Test with pytest - ignore smoke test.
       if: ${{ !contains(needs.check_skip_flags.outputs.head-commit-message, 'full_test') }}
       run: |
-        pytest -m "not smoke" --cov=src --cov-report=xml
+        pytest -m "not smoke" --cov=halfpipe2bids --cov-report=xml
 
     - name: Full test - run all the test to generate accurate coverage report.
       if: ${{ contains(needs.check_skip_flags.outputs.head-commit-message, 'full_test') }} || ${{ github.event.pull_request.merged }}
-      run: pytest --cov=src --cov-report=xml
+      run: pytest --cov=halfpipe2bids --cov-report=xml
 
     # - uses: codecov/codecov-action@v5
     #   if: ${{ always() }}
