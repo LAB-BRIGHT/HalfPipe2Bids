@@ -55,7 +55,10 @@ def test_smoke(tmp_path, caplog):
     )
     assert relmat_file.exists()
     relmat = pd.read_csv(relmat_file, sep="\t")
-    assert len(relmat) == 417  # I am assuming there are 417 regions
+    # This is the number of ROI I got from the supossingly original file
+    assert (
+        len(relmat) == 434
+    )  # TODO: when the --impute-nans option is added, this might
     json_file = output_folder / (ts_base + "_timeseries.json")
     assert json_file.exists()
     with open(json_file, "r") as f:
