@@ -10,7 +10,7 @@ on:
     branches:
     - main
     - maint/*
-    paths: ['src/*', 'pyproject.toml', 'requirements.txt']
+    paths: ['halfpipe2bids/*', 'pyproject.toml', 'requirements.txt']
 
 defaults:
   run:
