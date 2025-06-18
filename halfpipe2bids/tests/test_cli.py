@@ -2,7 +2,6 @@
 Simple code to smoke test the functionality.
 """
 
-from pathlib import Path
 from importlib import resources
 import json
 import pytest
