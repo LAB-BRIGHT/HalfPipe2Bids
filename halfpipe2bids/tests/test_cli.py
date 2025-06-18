@@ -48,4 +48,18 @@ def test_smoke(tmp_path, caplog):
             "group",
         ]
     )
-    # TODO: check outputs
+    output_folder = output_dir / "sub-10159/func"
+    base = "sub-10159_task-rest_seg-schaefer400417"
+    ts_base = base + "_desc-denoisecorrMatrix1"
+    relmat_file = output_folder / (
+        ts_base + "_meas-PearsonCorrelation_relmat.tsv"
+    )
+    assert relmat_file.exists()
+    relmat = pd.read_csv(relmat_file, sep="\t")
+    assert len(relmat) == 417  # I am assuming there are 417 regions
+    json_file = output_folder / (ts_base + "_timeseries.json")
+    assert json_file.exists()
+    with open(json_file, "r") as f:
+        content = json.load(f)
+        # the unit is Hz, for TR= 2s, the sampling frequency is 0.5 Hz
+        assert content.get("SamplingFrequency") == 0.5
