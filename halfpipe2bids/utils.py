@@ -4,6 +4,7 @@ import pandas as pd
 import logging
 from nilearn.signal import clean
 from nilearn import plotting
+import re
 
 hp2b_log = logging.getLogger("halfpipe2bids")
 hp2b_url = "https://github.com/pbergeret12/HalfPipe2Bids/"
@@ -43,6 +44,22 @@ def get_strategy_confounds(spec_path):
         )
 
     return strategy_confounds
+
+
+def regex_to_regressor(regex_confounds, confounds_columns):
+    """
+    Convert the list of regex patterns from HALFpipe to a list of regressors.
+    Args:
+        regex_confounds (list): List of regex patterns.
+        confounds_columns (list): List of column names from fmriprep confound file.
+    Returns:
+        list: List of confound columns based on fmriprep confound file.
+    """
+    # TODO: To be merged with get_strategy_confounds
+
+    # Compile the regex pattern
+    pattern = re.compile("|".join(regex_confounds))
+    return [col for col in confounds_columns if pattern.fullmatch(col)]
 
 
 def impute_and_clean(df):
