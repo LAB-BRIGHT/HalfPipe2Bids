@@ -5,3 +5,4 @@ exclude =
     **/tests/*
     *build/
     halfpipe2bids/_version.py
+max-line-length = 95

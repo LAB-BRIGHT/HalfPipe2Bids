@@ -53,6 +53,13 @@ def global_parser() -> argparse.ArgumentParser:
         type=int,
         nargs=1,
     )
+
+    parser.add_argument(
+        "--NaN_Handling",
+        help="Enable NaN handling (imputation and bad ROI removal).",
+        action="store_true",
+    )
+
     return parser
 
 
@@ -94,6 +101,7 @@ def workflow(args: argparse.Namespace) -> None:
         dict_scrubvolume = {}
         dict_samplingfrequency = {}
         missing_list = []
+        base_names = {}
 
         for subject in subjects:
             hp_path = (
@@ -113,6 +121,13 @@ def workflow(args: argparse.Namespace) -> None:
 
             if Path(hp_path).exists():
                 df_ts = pd.read_csv(hp_path, sep="\t", header=None)
+
+                if df_ts.shape[1] != len(label_atlas):
+                    hp2b_log.warning(
+                        f"{hp_path} has unexpected number of columns. Skipped."
+                    )
+                    continue
+
                 df_ts.columns = label_atlas
                 dict_timeseries[subject] = df_ts
 
@@ -132,54 +147,57 @@ def workflow(args: argparse.Namespace) -> None:
             else:
                 missing_list.append(subject)
 
-        # --- Phase 2: Handle NaNs and identify bad ROIs ---
-        labels_to_drop = hp2b_utils.remove_bad_rois(
-            dict_timeseries, label_atlas
-        )
-        remaining_labels = list(set(label_atlas) - set(labels_to_drop))
+        # --- Phase 2: Prepare BIDS-compatible filenames ---
+        for subject, df in dict_timeseries.items():
+            nroi = df.shape[1]  # initial number of ROIs
+            base_name = f"{subject}_{task}_seg-{atlas_name}{nroi}_desc-denoise{strategy}"
+            base_names[subject] = base_name
 
-        dict_clean_timeseries = {}
-        for subject in dict_timeseries:
-            df_clean = hp2b_utils.impute_and_clean(dict_timeseries[subject])
-            df_clean = df_clean[remaining_labels]
-            dict_clean_timeseries[subject] = df_clean
+        # --- Phase 3: Optional NaN Handling ---
+        if args.NaN_Handling:
+            labels_to_drop = hp2b_utils.remove_bad_rois(
+                dict_timeseries, label_atlas
+            )
+            remaining_labels = [
+                label for label in label_atlas if label not in labels_to_drop
+            ]
 
-        # Compute Pearson correlation matrix per subject
-        dict_corr = {
-            subject: df.corr(method="pearson")
-            for subject, df in dict_clean_timeseries.items()
-        }
+            for subject in dict_timeseries:
+                df_clean = hp2b_utils.impute_and_clean(
+                    dict_timeseries[subject]
+                )
+                df_clean = df_clean[remaining_labels]
+                dict_timeseries[subject] = df_clean
 
-        # --- Phase 3: Write output to BIDS format ---
-        nroi = len(remaining_labels)
-        regressors = strategy_confounds[strategy]
+                # Update base name with new nroi count after cleaning
+                nroi = len(remaining_labels)
+                base_name = f"{subject}_{task}_seg-{atlas_name}{nroi}_desc-denoise{strategy}"
+                base_names[subject] = base_name
 
-        for subject in dict_clean_timeseries:
+        # --- Phase 4: Write final BIDS-formatted outputs ---
+        for subject, df in dict_timeseries.items():
+            nroi = df.shape[1]
             subject_output = output_dir / subject / "func"
             os.makedirs(subject_output, exist_ok=True)
-            base_name = (
-                f"{subject}_{task}_seg-{atlas_name}{nroi}_"
-                f"desc-denoise{strategy}"
-            )
+            base_name = base_names[subject]
 
             # Time series
             ts_path = subject_output / f"{base_name}_timeseries.tsv"
-            dict_clean_timeseries[subject].columns = range(nroi)
-            dict_clean_timeseries[subject].to_csv(
-                ts_path, sep="\t", index=False
-            )
+            df.columns = range(nroi)  # Reset columns to 0...nroi-1
+            df.to_csv(ts_path, sep="\t", index=False)
 
-            # Connectivity matrix
+            # Correlation matrix
+            corr = df.corr(method="pearson")
             conn_path = (
                 subject_output
                 / f"{base_name}_meas-PearsonCorrelation_relmat.tsv"
             )
-            dict_corr[subject].columns = range(nroi)
-            dict_corr[subject].to_csv(conn_path, sep="\t", index=False)
+            corr.columns = range(nroi)
+            corr.to_csv(conn_path, sep="\t", index=False)
 
-            # JSON sidecar
+            # Metadata JSON
             json_data = {
-                "ConfoundRegressors": regressors,
+                "ConfoundRegressors": strategy_confounds[strategy],
                 "NumberOfVolumesDiscardedByMotionScrubbing": dict_scrubvolume[
                     subject
                 ],
