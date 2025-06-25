@@ -42,7 +42,10 @@ def global_parser() -> argparse.ArgumentParser:
         choices=["group"],
     )
     parser.add_argument(
-        "-v", "--version", action="version", version=__version__
+        "-v",
+        "--version",
+        action="version",
+        version=__version__,
     )
     parser.add_argument(
         "--verbosity",
@@ -53,13 +56,11 @@ def global_parser() -> argparse.ArgumentParser:
         type=int,
         nargs=1,
     )
-
     parser.add_argument(
         "--NaN_Handling",
         help="Enable NaN handling (imputation and bad ROI removal).",
         action="store_true",
     )
-
     return parser
 
 
@@ -81,129 +82,128 @@ def workflow(args: argparse.Namespace) -> None:
     # Create dataset-level metadata
     hp2b_utils.crearte_dataset_metadata_json(output_dir)
 
-    # Load atlas ROI labels
     label_atlas = hp2b_utils.load_label_schaefer(path_label_nii)
-
-    # Get denoising strategies and associated confounds from spec
     strategy_confounds = hp2b_utils.get_strategy_confounds(path_halfpipe_spec)
+    subjects = hp2b_utils.get_subjects(path_halfpipe_timeseries)
 
     task = "task-rest"  # TODO: make this dynamic
     atlas_name = "schaefer400"  # TODO: make this dynamic
 
-    subjects = hp2b_utils.get_subjects(path_halfpipe_timeseries)
+    # --- Phase 1: Load raw time series ---
 
-    for strategy in strategy_confounds:
-        hp2b_log.info(f"Processing strategy: {strategy}")
+    final_timeseries = {}  # final_timeseries[strategy][subject] = DataFrame
+    raw_data_by_subject = (
+        {}
+    )  # raw_data_by_subject[subject][strategy] = DataFrame
 
-        # --- Phase 1: Load all raw data ---
-        dict_timeseries = {}
-        dict_mean_framewise = {}
-        dict_scrubvolume = {}
-        dict_samplingfrequency = {}
-        missing_list = []
-        base_names = {}
+    for subject in subjects:
+        raw_data_by_subject[subject] = {}
 
-        for subject in subjects:
+        for strategy in strategy_confounds:
             hp_path = (
                 f"{path_halfpipe_timeseries}/{subject}/func/{task}/"
-                f"{subject}_{task}_feature-{strategy}_atlas-{atlas_name}_"
-                "timeseries.tsv"
+                f"{subject}_{task}_feature-{strategy}_atlas-{atlas_name}"
+                "_timeseries.tsv"
             )
-            json_path = (
-                f"{path_halfpipe_timeseries}/{subject}/func/{task}/"
-                f"{subject}_{task}_feature-{strategy}_atlas-{atlas_name}_"
-                "timeseries.json"
-            )
-            conf_path = (
-                f"{path_fmriprep}/{subject}/func/"
-                f"{subject}_{task}_desc-confounds_timeseries.tsv"
-            )
+            if not Path(hp_path).exists():
+                continue
 
-            if Path(hp_path).exists():
-                df_ts = pd.read_csv(hp_path, sep="\t", header=None)
+            df = pd.read_csv(hp_path, sep="\t", header=None)
+            if df.shape[1] != len(label_atlas):
+                continue
 
-                if df_ts.shape[1] != len(label_atlas):
-                    hp2b_log.warning(
-                        f"{hp_path} has unexpected number of columns. Skipped."
-                    )
-                    continue
+            df.columns = label_atlas
+            raw_data_by_subject[subject][strategy] = df
 
-                df_ts.columns = label_atlas
-                dict_timeseries[subject] = df_ts
+    # --- Phase 2: Optional NaN handling (imputation and ROI filtering) ---
 
-                df_conf = pd.read_csv(conf_path, sep="\t")
-                dict_mean_framewise[subject] = df_conf[
-                    "framewise_displacement"
-                ].mean()
-                dict_scrubvolume[subject] = df_conf.filter(
-                    like="motion_outlier"
-                ).shape[1]
+    if args.NaN_Handling:
+        for strategy in strategy_confounds:
+            # Build subject-wise dict for each strategy
+            data_for_strategy = {
+                subject: raw_data_by_subject[subject][strategy]
+                for subject in raw_data_by_subject
+                if strategy in raw_data_by_subject[subject]
+            }
 
-                with open(json_path) as f:
-                    meta = json.load(f)
-                dict_samplingfrequency[subject] = meta.get(
-                    "SamplingFrequency", None
-                )
-            else:
-                missing_list.append(subject)
-
-        # --- Phase 2: Prepare BIDS-compatible filenames ---
-        for subject, df in dict_timeseries.items():
-            nroi = df.shape[1]  # initial number of ROIs
-            base_name = f"{subject}_{task}_seg-{atlas_name}{nroi}_desc-denoise{strategy}"
-            base_names[subject] = base_name
-
-        # --- Phase 3: Optional NaN Handling ---
-        if args.NaN_Handling:
             labels_to_drop = hp2b_utils.remove_bad_rois(
-                dict_timeseries, label_atlas
+                data_for_strategy, label_atlas
             )
             remaining_labels = [
                 label for label in label_atlas if label not in labels_to_drop
             ]
 
-            for subject in dict_timeseries:
+            for subject in data_for_strategy:
                 df_clean = hp2b_utils.impute_and_clean(
-                    dict_timeseries[subject]
+                    data_for_strategy[subject]
                 )
                 df_clean = df_clean[remaining_labels]
-                dict_timeseries[subject] = df_clean
 
-                # Update base name with new nroi count after cleaning
-                nroi = len(remaining_labels)
-                base_name = f"{subject}_{task}_seg-{atlas_name}{nroi}_desc-denoise{strategy}"
-                base_names[subject] = base_name
+                if strategy not in final_timeseries:
+                    final_timeseries[strategy] = {}
+                final_timeseries[strategy][subject] = df_clean
+    else:
+        for subject in raw_data_by_subject:
+            for strategy in raw_data_by_subject[subject]:
+                if strategy not in final_timeseries:
+                    final_timeseries[strategy] = {}
+                final_timeseries[strategy][subject] = raw_data_by_subject[
+                    subject
+                ][strategy]
 
-        # --- Phase 4: Write final BIDS-formatted outputs ---
-        for subject, df in dict_timeseries.items():
-            nroi = df.shape[1]
+    # --- Phase 3: Renaming and BIDS export ---
+
+    for subject in subjects:
+        for strategy in strategy_confounds:
+            hp2b_log.info(f"Processing {subject} | strategy: {strategy}")
+
+            if subject not in final_timeseries.get(strategy, {}):
+                continue
+
+            df_ts = final_timeseries[strategy][subject]
+            nroi = df_ts.shape[1]
+            base_name = f"{subject}_{task}_seg-{atlas_name}"
+            f"{nroi}_desc-denoise{strategy}"
             subject_output = output_dir / subject / "func"
             os.makedirs(subject_output, exist_ok=True)
-            base_name = base_names[subject]
 
-            # Time series
+            # Save time series TSV
             ts_path = subject_output / f"{base_name}_timeseries.tsv"
-            df.columns = range(nroi)  # Reset columns to 0...nroi-1
-            df.to_csv(ts_path, sep="\t", index=False)
+            df_ts.columns = range(nroi)
+            df_ts.to_csv(ts_path, sep="\t", index=False)
 
-            # Correlation matrix
-            corr = df.corr(method="pearson")
-            conn_path = (
-                subject_output
-                / f"{base_name}_meas-PearsonCorrelation_relmat.tsv"
-            )
+            # Save correlation matrix TSV
+            corr = df_ts.corr(method="pearson")
+            conn_path = subject_output / f"{base_name}"
+            "_meas-PearsonCorrelation_relmat.tsv"
             corr.columns = range(nroi)
             corr.to_csv(conn_path, sep="\t", index=False)
 
-            # Metadata JSON
+            # Load and extract metadata
+            json_path = (
+                f"{path_halfpipe_timeseries}/{subject}/func/{task}/"
+                f"{subject}_{task}_feature-{strategy}_atlas-{atlas_name}"
+                "_timeseries.json"
+            )
+            with open(json_path) as f:
+                meta = json.load(f)
+            sampling_freq = meta.get("SamplingFrequency", None)
+
+            conf_path = (
+                f"{path_fmriprep}/{subject}/func/"
+                f"{subject}_{task}_desc-confounds_timeseries.tsv"
+            )
+            df_conf = pd.read_csv(conf_path, sep="\t")
+            mean_fd = df_conf["framewise_displacement"].mean()
+            scrub_vols = df_conf.filter(like="motion_outlier").shape[1]
+
             json_data = {
                 "ConfoundRegressors": strategy_confounds[strategy],
-                "NumberOfVolumesDiscardedByMotionScrubbing": dict_scrubvolume[
-                    subject
-                ],
-                "MeanFramewiseDisplacement": dict_mean_framewise[subject],
-                "SamplingFrequency": dict_samplingfrequency[subject],
+                "NumberOfVolumesDiscardedByMotionScrubbing": scrub_vols,
+                "MeanFramewiseDisplacement": mean_fd,
+                "SamplingFrequency": sampling_freq,
             }
+
             json_out_path = subject_output / f"{base_name}_timeseries.json"
             with open(json_out_path, "w") as f:
                 json.dump(json_data, f, indent=4)
