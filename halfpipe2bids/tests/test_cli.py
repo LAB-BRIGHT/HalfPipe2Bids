@@ -48,7 +48,7 @@ def test_smoke(tmp_path, caplog):
         ]
     )
     output_folder = output_dir / "sub-10159/func"
-    base = "sub-10159_task-rest_seg-schaefer400417"
+    base = "sub-10159_task-rest_seg-schaefer400_434"
     ts_base = base + "_desc-denoisecorrMatrix1"
     relmat_file = output_folder / (
         ts_base + "_meas-PearsonCorrelation_relmat.tsv"
