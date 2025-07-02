@@ -142,6 +142,13 @@ def workflow(args: argparse.Namespace) -> None:
                 if strategy not in final_timeseries:
                     final_timeseries[strategy] = {}
                 final_timeseries[strategy][subject] = df_clean
+
+        # Computation of remaining ROIs
+        coords_df = hp2b_utils.get_coords(
+            path_atlas / "atlas-Schaefer2018Combined_dseg.nii.gz",
+            label_atlas,
+            labels_to_drop,
+        )
     else:
         for subject in raw_data_by_subject:
             for strategy in raw_data_by_subject[subject]:
@@ -150,6 +157,11 @@ def workflow(args: argparse.Namespace) -> None:
                 final_timeseries[strategy][subject] = raw_data_by_subject[
                     subject
                 ][strategy]
+        coords_df = hp2b_utils.get_coords(
+            path_atlas / "atlas-Schaefer2018Combined_dseg.nii.gz",
+            label_atlas,
+            [],
+        )
 
     # --- Phase 3: Renaming and BIDS export ---
 
@@ -162,46 +174,66 @@ def workflow(args: argparse.Namespace) -> None:
 
             df_ts = final_timeseries[strategy][subject]
             nroi = df_ts.shape[1]
-            base_name = f"{subject}_{task}_seg-{atlas_name}"
-            f"{nroi}_desc-denoise{strategy}"
+            base_name = (
+                f"{subject}_{task}_seg-{atlas_name}_"
+                f"{nroi}_desc-denoise{strategy}"
+            )
             subject_output = output_dir / subject / "func"
             os.makedirs(subject_output, exist_ok=True)
 
+            # Save original ROI labels before renaming
+            roi_labels = df_ts.columns.tolist()
+
             # Save time series TSV
             ts_path = subject_output / f"{base_name}_timeseries.tsv"
-            df_ts.columns = range(nroi)
+            df_ts.columns = range(nroi)  # Replace ROI names with 0...N
             df_ts.to_csv(ts_path, sep="\t", index=False)
 
             # Save correlation matrix TSV
             corr = df_ts.corr(method="pearson")
-            conn_path = subject_output / f"{base_name}"
-            "_meas-PearsonCorrelation_relmat.tsv"
+            conn_path = (
+                subject_output
+                / f"{base_name}_meas-PearsonCorrelation_relmat.tsv"
+            )
             corr.columns = range(nroi)
             corr.to_csv(conn_path, sep="\t", index=False)
 
             # Load and extract metadata
             json_path = (
-                f"{path_halfpipe_timeseries}/{subject}/func/{task}/"
-                f"{subject}_{task}_feature-{strategy}_atlas-{atlas_name}"
-                "_timeseries.json"
+                path_halfpipe_timeseries
+                / subject
+                / "func"
+                / task
+                / f"{subject}_{task}_feature-{strategy}_atlas-"
+                / f"{atlas_name}_timeseries.json"
             )
             with open(json_path) as f:
                 meta = json.load(f)
             sampling_freq = meta.get("SamplingFrequency", None)
 
             conf_path = (
-                f"{path_fmriprep}/{subject}/func/"
-                f"{subject}_{task}_desc-confounds_timeseries.tsv"
+                path_fmriprep
+                / subject
+                / "func"
+                / f"{subject}_{task}_desc-confounds_timeseries.tsv"
             )
             df_conf = pd.read_csv(conf_path, sep="\t")
             mean_fd = df_conf["framewise_displacement"].mean()
             scrub_vols = df_conf.filter(like="motion_outlier").shape[1]
+
+            # ROI centroids exported as dict[label, [x, y, z]]
+            roi_centroids = {
+                label: coords_df.loc[label].tolist()
+                for label in roi_labels
+                if label in coords_df.index
+            }
 
             json_data = {
                 "ConfoundRegressors": strategy_confounds[strategy],
                 "NumberOfVolumesDiscardedByMotionScrubbing": scrub_vols,
                 "MeanFramewiseDisplacement": mean_fd,
                 "SamplingFrequency": sampling_freq,
+                "ROICentroids": roi_centroids,
             }
 
             json_out_path = subject_output / f"{base_name}_timeseries.json"
