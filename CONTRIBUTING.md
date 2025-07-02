@@ -10,8 +10,8 @@ git clone git@github.com:<your_username>/HalfPipe2Bids.git
 
 Minimal example:
 ```bash
-python3 -m venv halfpipe2bids
-source halfpipe2bids/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
 ```
 
 With `uv`:
