@@ -225,6 +225,7 @@ def workflow(args: argparse.Namespace) -> None:
             )
             df_conf = pd.read_csv(conf_path, sep="\t")
             mean_fd = df_conf["framewise_displacement"].mean()
+            max_fd = df_conf["framewise_displacement"].max()
             scrub_vols = df_conf.filter(like="motion_outlier").shape[1]
 
             # ROI centroids exported as dict[label, [x, y, z]]
@@ -238,6 +239,7 @@ def workflow(args: argparse.Namespace) -> None:
                 "ConfoundRegressors": strategy_confounds[strategy],
                 "NumberOfVolumesDiscardedByMotionScrubbing": scrub_vols,
                 "MeanFramewiseDisplacement": mean_fd,
+                "MaxFramewiseDisplacement": max_fd,
                 "SamplingFrequency": sampling_freq,
                 "ROICentroids": roi_centroids,
             }
