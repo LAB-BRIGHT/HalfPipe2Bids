@@ -204,8 +204,10 @@ def workflow(args: argparse.Namespace) -> None:
                 / subject
                 / "func"
                 / task
-                / f"{subject}_{task}_feature-{strategy}_atlas-"
-                / f"{atlas_name}_timeseries.json"
+                / (
+                    f"{subject}_{task}_feature-{strategy}_atlas-"
+                    f"{atlas_name}_timeseries.json"
+                )
             )
             with open(json_path) as f:
                 meta = json.load(f)
