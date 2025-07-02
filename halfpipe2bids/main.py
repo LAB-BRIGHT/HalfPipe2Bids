@@ -212,8 +212,8 @@ def workflow(args: argparse.Namespace) -> None:
             with open(json_path) as f:
                 meta = json.load(f)
             sampling_freq = meta.get("SamplingFrequency", None)
-            
-            #convert sampling_freq from sec to Hz
+
+            # convert sampling_freq from sec to Hz
             if sampling_freq is not None:
                 sampling_freq = 1.0 / sampling_freq
 
