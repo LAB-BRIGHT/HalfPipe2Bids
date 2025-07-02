@@ -4,9 +4,58 @@ import pandas as pd
 import logging
 from nilearn.signal import clean
 from nilearn import plotting
+import re
+from halfpipe2bids import __version__
 
 hp2b_log = logging.getLogger("halfpipe2bids")
-hp2b_url = "https://github.com/pbergeret12/HalfPipe2Bids/"
+hp2b_url = "https://github.com/LAB-BRIGHT/HalfPipe2Bids"
+
+suffix_converter = {"matrix": "relmat", "timeseries": "timeseries"}
+measure_entity_converter = {
+    "correlation": "PearsonCorrelation",
+    "covariance": "covariance",
+}
+regex_bids_entity = r"([a-zA-Z]*)-([^_]*)"
+
+dataset_description = {
+    "BIDSVersion": "1.9.0",
+    "License": None,
+    "Name": None,
+    "ReferencesAndLinks": [],
+    "DatasetDOI": None,
+    "DatasetType": "derivative",
+    "GeneratedBy": [
+        {
+            "Name": "Halfpipe2Bids",
+            "Version": __version__,
+            "CodeURL": hp2b_url,
+        }
+    ],
+    "HowToAcknowledge": f"Please refer to our repository: {hp2b_url}",
+}
+
+meas_meta = {
+    "covariates": {
+        "Measure": "Covariance",
+        "MeasureDescription": "Covariance",
+        "Weighted": False,
+        "Directed": False,
+        "ValidDiagonal": True,
+        "StorageFormat": "Full",
+        "NonNegative": "",
+        "Code": "HALFPipe",
+    },
+    "PearsonCorrelation": {
+        "Measure": "Pearson correlation",
+        "MeasureDescription": "Pearson correlation",
+        "Weighted": False,
+        "Directed": False,
+        "ValidDiagonal": True,
+        "StorageFormat": "Full",
+        "NonNegative": "",
+        "Code": "HALFPipe",
+    },
+}
 
 
 def get_subjects(path_halfpipe_timeseries):
@@ -99,57 +148,75 @@ def get_coords(volume_path, label_schaefer, labels_to_drop):
     return df_coords[~df_coords.index.isin(labels_to_drop)]
 
 
-def crearte_dataset_metadata_json(output_dir) -> None:
+def create_dataset_metadata_json(output_dir) -> None:
     """
     Create dataset-level metadata JSON files for BIDS.
     Args:
         output_dir (Path): path to the output directory where the JSON file
         will be saved.
     """
-    # export json file of common metadata for BIDS dataset
-    summary_path = output_dir / "meas-PearsonCorrelation_relmat.json"
-    with open(summary_path, "w") as f:
-        json.dump(
-            {
-                "Measure": "Pearson correlation",
-                "MeasureDescription": "Pearson correlation",
-                "Weighted": False,
-                "Directed": False,
-                "ValidDiagonal": True,
-                "StorageFormat": "Full",
-                "NonNegative": "",
-                "Code": hp2b_url,
-            },
-            f,
-            indent=4,
-        )
+    # create the dataset_description.json file
+    hp2b_log.info(f"Creating {output_dir / 'dataset_description.json'}")
+    with open(output_dir / "dataset_description.json", "w") as f:
+        json.dump(dataset_description, f, indent=4)
 
-    hp2b_log.info(f"Export terminé dans : {output_dir}")
+    for meas in meas_meta:
+        meas_path = output_dir / f"meas-{meas}_relmat.json"
+        with open(meas_path, "w") as f:
+            json.dump(meas_meta[meas], f, indent=4)
+        hp2b_log.info(f"Exported {meas} metadata to {meas_path}")
 
-    # Export du json de description de dataset
 
-    json_dataset_description = {
-        "BIDSVersion": "1.9.0",
-        "License": None,
-        "Name": None,
-        "ReferencesAndLinks": [],
-        "DatasetDOI": None,
-        "DatasetType": "derivative",
-        "GeneratedBy": [
-            {
-                "Name": "Halfpipe2Bids",
-                "Version": "0.1",
-                "CodeURL": hp2b_url,
-            }
-        ],
-        "HowToAcknowledge": f"Please refer to our repository: {hp2b_url}",
-    }
+def get_bids_filename(src, output_dir):
+    """
+    Generates a BIDS-compliant filename based on the source file's name
+    and the output directory.
 
-    output_filename = "dataset_description.json"
-    output_file = output_dir / output_filename
+    Args:
+        src (Path): The source file path, which should contain BIDS
+            entities in its name.
+        output_dir (Path): The output directory where the BIDS file
+            will be saved.
 
-    # Exporter le JSON
-    with open(output_file, "w") as f:
-        json.dump(json_dataset_description, f, indent=4)
+    Returns:
+        Path: The BIDS-compliant file path.
 
-    hp2b_log.info(f"JSON exporté vers {output_dir}")
+    Raises:
+        KeyError: If required BIDS entities (e.g., 'sub', 'task',
+            'atlas', 'feature') are missing from the source filename.
+
+    Notes:
+        - The function extracts BIDS entities from the source filename
+            using a regular expression.
+        - It applies entity and suffix conversions according to BIDS
+            conventions.
+        - The output path is structured as:
+            <output_dir>/sub-<subject>/func/<BIDS_filename>.
+    """
+
+    # rename files to match BIDS naming conventions
+    entities = re.findall(regex_bids_entity, src.stem)
+    entities = {entity[0]: entity[1] for entity in entities}
+    extension = src.suffix
+    suffix = src.stem.split("_")[-1]
+
+    file_output_dir = output_dir / f"sub-{entities['sub']}" / "func"
+    if extension == ".gz":
+        return file_output_dir / src.name
+
+    if suffix in suffix_converter:
+        suffix = suffix_converter[suffix]
+    if "desc" in entities and entities["desc"] in measure_entity_converter:
+        entities["desc"] = measure_entity_converter[entities["desc"]]
+
+    # convert entities to a dictionary
+    new_basename = (
+        f"sub-{entities['sub']}_task-{entities['task']}_"
+        f"seg-{entities['atlas']}_desc-{entities['feature']}_"
+    )
+    new_suffix_info = (
+        f"meas-{entities['desc']}_{suffix}{extension}"
+        if "desc" in entities
+        else f"{suffix}{extension}"
+    )
+    return file_output_dir / f"{new_basename}{new_suffix_info}"
