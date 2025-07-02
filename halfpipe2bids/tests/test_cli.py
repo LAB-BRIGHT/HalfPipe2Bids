@@ -55,9 +55,11 @@ def test_smoke(tmp_path, caplog):
     )
     # checking if relmat file exists
     if not relmat_file.exists():
-        raise FileNotFoundError(f"Expected file not found: {relmat_file}\nAvailable files:\n" + 
-                                "\n".join(str(p) for p in output_folder.glob("*")))
-    
+        raise FileNotFoundError(
+            f"Expected file not found: {relmat_file}\nAvailable files:\n"
+            + "\n".join(str(p) for p in output_folder.glob("*"))
+        )
+
     relmat = pd.read_csv(relmat_file, sep="\t")
     # This is the number of ROI (columns) I got from the supposedly original file
     # TODO: when the --impute-nans option is added, this test should pass
