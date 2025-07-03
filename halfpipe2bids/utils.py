@@ -2,8 +2,6 @@ import os
 import json
 import pandas as pd
 import logging
-from nilearn.signal import clean
-from nilearn import plotting
 import re
 from halfpipe2bids import __version__
 
@@ -67,31 +65,16 @@ def get_subjects(path_halfpipe_timeseries):
     ]
 
 
-def load_label_schaefer(path_label_schaefer):
-    # TODO: documentation and eventually remove - we what this to work with
-    # different atlases
-    return list(pd.read_csv(path_label_schaefer, sep="\t", header=None)[1])
-
-
-def get_strategy_confounds(spec_path):
+def get_halfpipe_denoise_strategy_names(spec_path):
     # TODO: documentation
     with open(spec_path, "r") as f:
         data = json.load(f)
 
-    setting_to_confounds = {
-        s["name"]: s.get("confounds_removal", [])
-        for s in data.get("settings", [])
-    }
-
-    strategy_confounds = {}
+    strategy_names = []
     for feature in data.get("features", []):
         strategy_name = feature.get("name")
-        setting_name = feature.get("setting")
-        strategy_confounds[strategy_name] = setting_to_confounds.get(
-            setting_name, []
-        )
-
-    return strategy_confounds
+        strategy_names.append(strategy_name)
+    return strategy_names
 
 
 def regex_to_regressor(regex_confounds, confounds_columns):
@@ -110,61 +93,26 @@ def regex_to_regressor(regex_confounds, confounds_columns):
     return [col for col in confounds_columns if pattern.fullmatch(col)]
 
 
-def impute_and_clean(df):
-    # TODO: documentation and what's the imputation method?
-    row_means = df.mean(axis=1, skipna=True)
-    df_filled = df.T.fillna(row_means).T
-
-    if df_filled.isna().any().any():
-        hp2b_log.warning("Certaines valeurs n'ont pas pu être imputées.")
-
-    cleaned = clean(
-        df_filled.values, detrend=True, standardize="zscore_sample"
-    )
-    return pd.DataFrame(cleaned, columns=df.columns, index=df.index)
-
-
-def remove_bad_rois(dict_timeseries, label_schaefer, threshold=0.5):
+def find_bad_rois(timeseries_paths, atlas_label):
     # TODO: documentation
-    nan_counts = {label: 0 for label in label_schaefer}
-    total_subjects = len(dict_timeseries)
+    # find out how many subject all miss the same roi
+    per_roi_nan_counter = {str(label): [0] for label in atlas_label}
+    total_subjects = len(timeseries_paths)
 
-    for df in dict_timeseries.values():
-        for label in label_schaefer:
-            if label in df.columns and df[label].isna().all():
-                nan_counts[label] += 1
+    for p in timeseries_paths:
+        df = pd.read_csv(p, sep="\t", header=0, index_col=0, na_values="nan")
+        subject_roi_missing = (pd.isna(df).sum() / df.shape[0]) == 1
+        for label in df.columns[subject_roi_missing]:
+            per_roi_nan_counter[label][0] += 1
 
-    df_nan_prop = pd.DataFrame(
-        {
-            "ROI": list(nan_counts.keys()),
-            "proportion_nan": [
-                nan_counts[label] / total_subjects for label in label_schaefer
-            ],
-        }
-    )
-
-    labels_to_drop = df_nan_prop[df_nan_prop["proportion_nan"] > threshold][
-        "ROI"
-    ].tolist()
-
-    for key in dict_timeseries:
-        dict_timeseries[key] = dict_timeseries[key].drop(
-            columns=labels_to_drop, errors="ignore"
-        )
-
-    return labels_to_drop
+    df_nan_prop = pd.DataFrame(per_roi_nan_counter).T / total_subjects
+    df_nan_prop.columns = ["proportion_missing_in_dataset"]
+    return df_nan_prop
 
 
-def get_coords(volume_path, label_schaefer, labels_to_drop):
-    # TODO: documentation
-    coords = plotting.find_parcellation_cut_coords(volume_path)
-    df_coords = pd.DataFrame(
-        coords, index=label_schaefer, columns=["x", "y", "z"]
-    )
-    return df_coords[~df_coords.index.isin(labels_to_drop)]
-
-
-def create_dataset_metadata_json(output_dir) -> None:
+def create_dataset_metadata_json(
+    output_dir, halfpipe_spec, path_atlas_nii
+) -> None:
     """
     Create dataset-level metadata JSON files for BIDS.
     Args:
@@ -181,6 +129,17 @@ def create_dataset_metadata_json(output_dir) -> None:
         with open(meas_path, "w") as f:
             json.dump(meas_meta[meas], f, indent=4)
         hp2b_log.info(f"Exported {meas} metadata to {meas_path}")
+
+    seg_meta = {
+        "File": entry
+        for entry in halfpipe_spec["files"]
+        if entry.get("suffix", False)
+    }
+
+    with open(
+        output_dir / f"seg-{seg_meta['File']['tags']['desc']}.json", "w"
+    ) as f:
+        json.dump(seg_meta, f, indent=4)
 
 
 def get_bids_filename(src, output_dir):
@@ -236,3 +195,57 @@ def get_bids_filename(src, output_dir):
         else f"{suffix}{extension}"
     )
     return file_output_dir / f"{new_basename}{new_suffix_info}"
+
+
+def populate_timeseries_json(
+    path_timeseries_json, fmriprep_dir, halfpipe_spec
+):
+    """Add additional meta data for denoising metric calculation to the
+    existing json file.
+
+    Args:
+        path_timeseries_json (Path): Path to the meta data file.
+        fmriprep_dir (Path): Associated fmriprep directory.
+        halfpipe_spec (dict): HALFPipe spec.json file.
+
+    Returns:
+        None
+    """
+    sub = path_timeseries_json.stem.split("sub-")[-1].split("_")[0]
+    task = path_timeseries_json.stem.split("task-")[-1].split("_")[0]
+    confound_file = (
+        fmriprep_dir
+        / f"sub-{sub}"
+        / "func"
+        / f"sub-{sub}_task-{task}_desc-confounds_timeseries.tsv"
+    )
+    confounds = pd.read_csv(confound_file, sep="\t")
+    extra_meta = {}
+    with open(path_timeseries_json, "r") as f:
+        timeseries_meta = json.load(f)
+
+    sampling_freq = timeseries_meta.get("SamplingFrequency", None)
+
+    # convert sampling_freq from sec to Hz
+    # TODO: this is an upstream issue that should be reported
+    if sampling_freq is not None:
+        sampling_freq = 1.0 / sampling_freq
+    extra_meta["SamplingFrequency"] = sampling_freq
+
+    # convert confound regressors
+    denoise_setting = timeseries_meta["Setting"]
+
+    extra_meta["ConfoundRegressors"] = regex_to_regressor(
+        denoise_setting["ConfoundsRemoval"], confounds.columns.tolist()
+    )
+    extra_meta["NumberOfVolumesDiscardedByMotionScrubbing"] = len(
+        regex_to_regressor(
+            ["motion_outlier[0-9]+"], confounds.columns.tolist()
+        )
+    )
+    extra_meta["MeanFramewiseDisplacement"] = confounds[
+        "framewise_displacement"
+    ].mean()
+    timeseries_meta.update(extra_meta)
+    with open(path_timeseries_json, "w") as f:
+        json.dump(timeseries_meta, f, indent=4)
