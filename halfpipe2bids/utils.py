@@ -1,11 +1,12 @@
 import os
 import json
 import pandas as pd
-import logging
 import re
 from halfpipe2bids import __version__
 
-hp2b_log = logging.getLogger("halfpipe2bids")
+from halfpipe2bids.logger import hp2b_logger
+
+hp2b_log = hp2b_logger()
 hp2b_url = "https://github.com/LAB-BRIGHT/HalfPipe2Bids"
 
 suffix_converter = {"matrix": "relmat", "timeseries": "timeseries"}

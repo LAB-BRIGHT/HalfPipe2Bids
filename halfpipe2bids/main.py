@@ -4,7 +4,6 @@ import shutil
 import json
 import pandas as pd
 import argparse
-import logging
 
 from pathlib import Path
 from typing import Sequence
@@ -12,8 +11,9 @@ from nilearn.plotting import find_parcellation_cut_coords
 
 from halfpipe2bids import __version__
 from halfpipe2bids import utils as hp2b_utils
+from halfpipe2bids.logger import hp2b_logger
 
-hp2b_log = logging.getLogger("halfpipe2bids")
+hp2b_log = hp2b_logger()
 
 
 def set_verbosity(verbosity: int | list[int]) -> None:
@@ -106,7 +106,7 @@ def workflow(args: argparse.Namespace) -> None:
     if not output_dir.exists():
         output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Create dataset-level metadata
+    hp2b_log.info("Create dataset-level metadata.")
     hp2b_utils.create_dataset_metadata_json(
         output_dir, halfpipe_spec, path_atlas_nii
     )
