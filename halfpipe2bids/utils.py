@@ -247,6 +247,9 @@ def populate_timeseries_json(
     extra_meta["MeanFramewiseDisplacement"] = confounds[
         "framewise_displacement"
     ].mean()
+    extra_meta["MaxFramewiseDisplacement"] = (
+        confounds["framewise_displacement"].max(),
+    )
     timeseries_meta.update(extra_meta)
     with open(path_timeseries_json, "w") as f:
         json.dump(timeseries_meta, f, indent=4)
