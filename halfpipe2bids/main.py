@@ -9,9 +9,11 @@ from pathlib import Path
 from typing import Sequence
 from nilearn.plotting import find_parcellation_cut_coords
 
+
 from halfpipe2bids import __version__
 from halfpipe2bids import utils as hp2b_utils
 from halfpipe2bids.logger import hp2b_logger
+from nilearn.connectivity import ConnectivityMeasure
 
 hp2b_log = hp2b_logger()
 
@@ -149,16 +151,19 @@ def workflow(args: argparse.Namespace) -> None:
         )
 
     if args.impute_nan:
-        # group file per denoising strategy
+        parcel_removal_threshold = 0.5
         atlas_label = pd.read_csv(
             path_atlas_label, sep="\t", header=None, index_col=0
         ).index.tolist()
         timeseries_paths = list(output_dir.glob("sub-*/**/*_timeseries.tsv"))
+        # find parcels coverage stats at dataset level
         dataset_nan_info = hp2b_utils.find_bad_rois(
             timeseries_paths, atlas_label
         )
         labels_to_drop = (
-            dataset_nan_info[dataset_nan_info > 0.5].dropna().index.tolist()
+            dataset_nan_info[dataset_nan_info > parcel_removal_threshold]
+            .dropna()
+            .index.tolist()
         )
         labels_to_keep = [
             str(label)
@@ -166,6 +171,11 @@ def workflow(args: argparse.Namespace) -> None:
             if str(label) not in labels_to_drop
         ]
 
+        # replace nan with row means (mean value of all parcels per TR)
+        relmat_calculation = {
+            "covariance": ConnectivityMeasure(kind="covariance"),
+            "PearsonCorrelation": ConnectivityMeasure(kind="correlation"),
+        }
         for p in timeseries_paths:
             df = pd.read_csv(p, sep="\t", header=0, na_values="nan")
             row_means = df.mean(axis=1, skipna=True)
@@ -173,7 +183,16 @@ def workflow(args: argparse.Namespace) -> None:
             df_imputed.loc[:, labels_to_keep].to_csv(
                 p, index=False, sep="\t", na_rep="nan"
             )
-            # TODO: recreate the functional connectivity
+            # recreate the functional connectivity
+            for relmat_type in relmat_calculation:
+                dst = Path(
+                    str(p).replace("timeseries", f"meas-{relmat_type}_relmat")
+                )
+                relmat = relmat_calculation[relmat_type].fit_transform(
+                    df_imputed.values
+                )
+                df_relmat = pd.DataFrame(relmat, columns=df_imputed.columns)
+                df_relmat.to_csv(dst, index=False, sep="\t", na_rep="nan")
 
         seg_meta_json = list(output_dir.glob("seg-*.json"))[0]
         seg_meta_tsv = list(output_dir.glob("seg-*.tsv"))[0]
@@ -184,7 +203,7 @@ def workflow(args: argparse.Namespace) -> None:
         with open(seg_meta_json, "r") as f:
             seg_metadata = json.load(f)
         seg_metadata_exta = {
-            "ParcelExclusionThreashold": 0.5,
+            "ParcelExclusionThreashold": parcel_removal_threshold,
             "ParcelsRemoved": labels_to_drop,
         }
         seg_metadata.update(seg_metadata_exta)
