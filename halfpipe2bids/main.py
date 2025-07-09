@@ -13,7 +13,7 @@ from nilearn.plotting import find_parcellation_cut_coords
 from halfpipe2bids import __version__
 from halfpipe2bids import utils as hp2b_utils
 from halfpipe2bids.logger import hp2b_logger
-from nilearn.connectivity import ConnectivityMeasure
+from nilearn.connectome import ConnectivityMeasure
 
 hp2b_log = hp2b_logger()
 
@@ -200,6 +200,7 @@ def workflow(args: argparse.Namespace) -> None:
             seg_meta_tsv, sep="\t", header=0, index_col="parcel_index"
         )
 
+        # add nan imputation related information to the segmentation meta data
         with open(seg_meta_json, "r") as f:
             seg_metadata = json.load(f)
         seg_metadata_exta = {
