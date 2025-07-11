@@ -94,9 +94,24 @@ def regex_to_regressor(regex_confounds, confounds_columns):
     return [col for col in confounds_columns if pattern.fullmatch(col)]
 
 
-def find_bad_rois(timeseries_paths, atlas_label):
-    # TODO: documentation
-    # find out how many subject all miss the same roi
+def find_bad_rois(timeseries_paths, atlas_label, parcel_removal_threshold=0.5):
+    """
+    Find out how many subject miss the same roi report in proportion of the
+    dataset.
+
+    Args:
+        timeseries_paths (list[Path]): Path to all time series data.
+        atlas_label (List): Parcel index (starting from 1).
+        parcel_removal_threshold (float): proportion of the dataset.
+            1.0 = all subjects in the dataset miss a given parcel.
+            0.0 = all subjects in the dataset has a given parcel.
+            Default: 0.5
+
+    Returns:
+        pandas.DataFrame: proportion of the dataset with nan per parcel.
+        List: labels to keep.
+        List: labels to drop.
+    """
     per_roi_nan_counter = {str(label): [0] for label in atlas_label}
     total_subjects = len(timeseries_paths)
 
@@ -108,7 +123,15 @@ def find_bad_rois(timeseries_paths, atlas_label):
 
     df_nan_prop = pd.DataFrame(per_roi_nan_counter).T / total_subjects
     df_nan_prop.columns = ["proportion_missing_in_dataset"]
-    return df_nan_prop
+    labels_to_drop = (
+        df_nan_prop[df_nan_prop > parcel_removal_threshold]
+        .dropna()
+        .index.tolist()
+    )
+    labels_to_keep = [
+        str(label) for label in atlas_label if str(label) not in labels_to_drop
+    ]
+    return df_nan_prop, labels_to_keep, labels_to_drop
 
 
 def create_dataset_metadata_json(
@@ -141,6 +164,26 @@ def create_dataset_metadata_json(
         output_dir / f"seg-{seg_meta['File']['tags']['desc']}.json", "w"
     ) as f:
         json.dump(seg_meta, f, indent=4)
+
+
+def load_atlas_info_tsv(path_atlas_label):
+    """
+    Load original atlas parcel label and index tsv from halfpipe.
+    The first column is the index, second the parcel label.
+    There's no header in the file.
+
+    Args:
+        path_atlas_label (Path): Path to the file.
+
+    Returns:
+        pandas.DataFrame:
+    """
+    atlas_label = pd.read_csv(
+        path_atlas_label, sep="\t", header=None, index_col=0
+    )
+    atlas_label.columns = ["parcel_name"]
+    atlas_label.index.name = "parcel_index"
+    return atlas_label
 
 
 def get_bids_filename(src, output_dir):
@@ -176,9 +219,11 @@ def get_bids_filename(src, output_dir):
     extension = src.suffix
     suffix = src.stem.split("_")[-1]
 
-    file_output_dir = output_dir / f"sub-{entities['sub']}" / "func"
+    if entities.get("sub", False):
+        output_dir = output_dir / f"sub-{entities['sub']}" / "func"
+
     if extension == ".gz":
-        return file_output_dir / src.name
+        return output_dir / src.name
 
     if suffix in suffix_converter:
         suffix = suffix_converter[suffix]
@@ -195,19 +240,16 @@ def get_bids_filename(src, output_dir):
         if "desc" in entities
         else f"{suffix}{extension}"
     )
-    return file_output_dir / f"{new_basename}{new_suffix_info}"
+    return output_dir / f"{new_basename}{new_suffix_info}"
 
 
-def populate_timeseries_json(
-    path_timeseries_json, fmriprep_dir, halfpipe_spec
-):
+def populate_timeseries_json(path_timeseries_json, fmriprep_dir):
     """Add additional meta data for denoising metric calculation to the
     existing json file.
 
     Args:
         path_timeseries_json (Path): Path to the meta data file.
         fmriprep_dir (Path): Associated fmriprep directory.
-        halfpipe_spec (dict): HALFPipe spec.json file.
 
     Returns:
         None
